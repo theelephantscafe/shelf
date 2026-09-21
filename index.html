@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Shelf — Reading Tracker</title>
+<title>Paige</title>
+<meta name="apple-mobile-web-app-title" content="Paige">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&display=swap" rel="stylesheet">
@@ -39,7 +40,6 @@ img{max-width:100%;display:block}
 .topbar .wrap{display:flex;align-items:center;gap:12px;padding-block:14px}
 .brand{font-family:var(--serif);font-size:21px;letter-spacing:-.02em;margin-right:auto;
   display:flex;align-items:center;gap:8px;background:none;border:0;padding:0}
-.brand span{color:var(--accent)}
 .btn{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:8px 15px;
   font-size:14px;font-weight:500;transition:.15s;white-space:nowrap}
 .btn:hover{border-color:var(--accent);color:var(--accent)}
@@ -80,7 +80,6 @@ section{margin-top:34px}
 /* ---------- sign in ---------- */
 #gate{max-width:390px;margin:0 auto;padding:60px 20px 40px;text-align:center}
 #gate .mark{font-family:var(--serif);font-size:34px;letter-spacing:-.02em;margin-bottom:6px}
-#gate .mark span{color:var(--accent)}
 #gate p.lead{color:var(--muted);font-size:14.5px;margin:0 0 26px}
 #gate input{text-align:center;margin-bottom:10px}
 #gate .btn-primary{width:100%;padding:11px}
@@ -166,9 +165,14 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:var(--card);gap:2px}
 .seg button{border:0;background:none;border-radius:999px;padding:6px 14px;font-size:13.5px;color:var(--muted)}
 .seg button[aria-pressed=true]{background:var(--accent-soft);color:var(--accent);font-weight:600}
-.stars-input{display:flex;gap:4px;align-items:center}
-.stars-input button{background:none;border:0;padding:2px;line-height:0;color:var(--line)}
-.stars-input button.on{color:var(--accent)}
+.stars-input{display:flex;gap:4px;align-items:center;user-select:none;-webkit-user-select:none}
+.stars-input button{background:none;border:0;padding:2px;line-height:0;color:var(--line);
+  position:relative;touch-action:manipulation}
+.stars-input .fill{position:absolute;inset:2px;line-height:0;color:var(--accent);
+  clip-path:inset(0 100% 0 0);pointer-events:none}
+.stars-input .full .fill{clip-path:inset(0 0 0 0)}
+.stars-input .half .fill{clip-path:inset(0 50% 0 0)}
+.star-hint{font-size:12px;color:var(--muted);margin:4px 0 0}
 .stars-input button:hover{transform:scale(1.12)}
 .stars-input .btn{color:var(--muted);text-decoration:underline}
 .stars-input .btn:hover{transform:none;color:var(--accent)}
@@ -228,7 +232,7 @@ dialog::backdrop{background:rgba(20,15,10,.45);backdrop-filter:blur(2px)}
 <body>
 
 <main id="gate" class="hide">
-  <div class="mark">Shelf<span>.</span></div>
+  <div class="mark">Paige</div>
   <p class="lead">Your reading, wherever you are.</p>
   <input type="email" id="gateEmail" placeholder="you@example.com" autocomplete="email">
   <button class="btn btn-primary" id="gateSend">Email me a sign-in link</button>
@@ -239,7 +243,7 @@ dialog::backdrop{background:rgba(20,15,10,.45);backdrop-filter:blur(2px)}
 <div id="app" class="hide">
 <header class="topbar">
   <div class="wrap">
-    <button class="brand" id="brandBtn">Shelf<span>.</span></button>
+    <button class="brand" id="brandBtn">Paige</button>
     <button class="btn btn-primary" id="addBtn">+ Add book</button>
     <button class="btn btn-icon btn-ghost" id="menuBtn" aria-label="More options">&#8942;</button>
   </div>
@@ -328,6 +332,7 @@ dialog::backdrop{background:rgba(20,15,10,.45);backdrop-filter:blur(2px)}
       <div class="field">
         <label>Rating</label>
         <div class="stars-input" id="dStars"></div>
+        <p class="star-hint">Double-tap a star for a half star</p>
       </div>
     </div>
   </div>
@@ -417,7 +422,7 @@ dialog::backdrop{background:rgba(20,15,10,.45);backdrop-filter:blur(2px)}
 
 <script>
 /* ============================================================
-   Shelf — a local reading tracker.
+   Paige — a reading tracker.
    Books are stored in Supabase and tied to the signed-in account, so
    they follow you between devices. Book search and cover art come from
    Open Library (openlibrary.org), a free, no-signup book database.
@@ -472,7 +477,7 @@ function warnSaving(msg){
 /* database row  <->  the shape the rest of the app already speaks */
 const rowToBook = r => ({
   id:r.id, title:r.title, author:r.author, cover:r.cover, format:r.format,
-  start:r.started_on, end:r.finished_on, rating:r.rating, notes:r.notes
+  start:r.started_on, end:r.finished_on, rating:Number(r.rating) || 0, notes:r.notes
 });
 const bookToRow = b => ({
   id:b.id, title:b.title || '', author:b.author || '', cover:b.cover || '',
@@ -517,7 +522,6 @@ function coverFail(img){
   d.textContent = img.dataset.t || '';
   img.replaceWith(d);
 }
-const starsText = n => n ? '★'.repeat(n) + '☆'.repeat(5 - n) : '';
 
 /* ============================================================
    HOME
@@ -726,14 +730,39 @@ function edit(patch, hint = 'Saved'){
 
 const STAR = `<svg viewBox="0 0 24 24"><path d="M12 2.6l2.9 5.9 6.5.95-4.7 4.6 1.1 6.5-5.8-3.05L6.2 20.5l1.1-6.5-4.7-4.6 6.5-.95z"/></svg>`;
 function renderStars(n){
-  $('#dStars').innerHTML = [1,2,3,4,5].map(i =>
-    `<button class="${i <= n ? 'on' : ''}" data-v="${i}" aria-label="${i} star${i>1?'s':''}">${STAR}</button>`).join('')
+  $('#dStars').innerHTML = [1,2,3,4,5].map(i => {
+    const cls = n >= i ? 'full' : n >= i - 0.5 ? 'half' : '';
+    return `<button class="${cls}" data-v="${i}" aria-label="${i} star${i>1?'s':''}">${STAR}<span class="fill">${STAR}</span></button>`;
+  }).join('')
     + (n ? `<span class="rating-text">${n} / 5 &mdash; <button class="btn btn-ghost" style="padding:2px 8px;font-size:12px" data-v="0">clear</button></span>` : '');
 }
+
+/* Tap a star for a whole rating; tap the same star twice quickly for a
+   half (double-tapping the 4th star gives 3.5). Detected here rather than
+   with the browser's dblclick event, which iPhones don't reliably send. */
+const DOUBLE_TAP_MS = 400;
+let lastTap = {star: 0, at: 0};
+let ratingTimer;
+
+function setRating(v){
+  const b = byId(currentId); if (!b) return;
+  b.rating = v;
+  renderStars(v);
+  /* A double-tap sets a whole star then a half a moment later. Wait for
+     the taps to settle and save only the final value, so two saves can
+     never race and leave the wrong one stored. */
+  clearTimeout(ratingTimer);
+  ratingTimer = setTimeout(() => saveBook(b), DOUBLE_TAP_MS);
+}
+
 $('#dStars').addEventListener('click', e => {
   const btn = e.target.closest('[data-v]'); if (!btn) return;
   const v = +btn.dataset.v;
-  edit({rating: v}); renderStars(v);
+  if (v === 0){ lastTap = {star: 0, at: 0}; return setRating(0); }
+  const now = Date.now();
+  const isDouble = lastTap.star === v && now - lastTap.at < DOUBLE_TAP_MS;
+  lastTap = isDouble ? {star: 0, at: 0} : {star: v, at: now};
+  setRating(isDouble ? v - 0.5 : v);
 });
 
 $('#dFormat').addEventListener('click', e => {
@@ -967,7 +996,7 @@ function refreshMenu(){
 $('#mBackup').onclick = () => {
   const blob = new Blob([JSON.stringify(books, null, 2)], {type:'application/json'});
   const a = Object.assign(document.createElement('a'),
-    {href:URL.createObjectURL(blob), download:`shelf-backup-${TODAY}.json`});
+    {href:URL.createObjectURL(blob), download:`paige-backup-${TODAY}.json`});
   a.click(); URL.revokeObjectURL(a.href);
   $('#menu').classList.add('hide');
 };
@@ -979,7 +1008,7 @@ $('#restoreFile').addEventListener('change', e => {
     if (!Array.isArray(data)) throw new Error('bad file');
     if (!confirm(`Add ${data.length} book(s) from this backup to your shelf?`)) return;
     restoreBooks(data);
-  }).catch(() => alert("That doesn't look like a Shelf backup file."));
+  }).catch(() => alert("That doesn't look like a Paige backup file."));
   e.target.value = '';
 });
 /* Restore merges a backup file in, giving each book a fresh id so it

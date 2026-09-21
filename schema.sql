@@ -1,4 +1,4 @@
--- Shelf — database setup
+-- Paige — database setup
 -- Paste this whole file into Supabase → SQL Editor → New query → Run.
 -- Safe to run more than once.
 
@@ -13,7 +13,8 @@ create table if not exists public.books (
                 check (format in ('physical','ebook','audio')),
   started_on  date,
   finished_on date,
-  rating      smallint    not null default 0 check (rating between 0 and 5),
+  rating      numeric(2,1) not null default 0
+                check (rating >= 0 and rating <= 5 and rating * 2 = round(rating * 2)),
   notes       text        not null default '',
   created_at  timestamptz not null default now()
 );

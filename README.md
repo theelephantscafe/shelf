@@ -1,4 +1,4 @@
-# Shelf — a personal reading tracker
+# Paige — a personal reading tracker
 
 **Live site: https://theelephantscafe.github.io/shelf/**
 

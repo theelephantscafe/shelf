@@ -14,5 +14,5 @@ http.createServer((req, res) => {
   res.writeHead(200, {'Content-Type': TYPES[path.extname(p)] || 'application/octet-stream'});
   fs.createReadStream(p).pipe(res);
 }).listen(4173, () => {
-  console.log('\n  Shelf is running.  Open:  http://localhost:4173\n  Press Ctrl-C to stop.\n');
+  console.log('\n  Paige is running.  Open:  http://localhost:4173\n  Press Ctrl-C to stop.\n');
 });
