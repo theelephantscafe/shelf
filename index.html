@@ -118,7 +118,8 @@ section{margin-top:34px}
 .bc-item .cover-fallback{font-size:12px;padding:8px}
 .bc-item:hover .cover,.bc-item:focus-visible .cover{transform:translateY(-9px) rotate(-1.5deg)}
 .bc-empty{padding:30px 4px 40px;color:var(--muted);font-size:14px}
-.lib-head{display:flex;align-items:baseline;gap:12px;margin:22px 0 14px}
+.lib-head{display:flex;align-items:baseline;flex-wrap:wrap;gap:10px 12px;margin:22px 0 14px}
+.lib-controls{display:flex;flex-wrap:wrap;gap:10px 16px}
 .lib-head h1{font-size:26px}
 .lib-head .count{font-size:13px;color:var(--muted);margin-left:auto}
 .sortwrap{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;
@@ -227,6 +228,7 @@ dialog::backdrop{background:rgba(20,15,10,.45);backdrop-filter:blur(2px)}
   .bc-rows.one-row{--slot:112px;gap:0 10px}
   .bc-rows{--slot:150px}
   .bookcase{padding:14px 12px 8px}
+  .lib-controls{width:100%}
 }
 </style>
 </head>
@@ -289,13 +291,18 @@ dialog::backdrop{background:rgba(20,15,10,.45);backdrop-filter:blur(2px)}
   <p style="margin:18px 0 0"><button class="btn btn-ghost" id="libBack">&#8249; Back</button></p>
   <div class="lib-head"><h1>My bookshelf</h1>
     <span class="count" id="libCount"></span>
-    <label class="sortwrap">Sort
-      <select id="libSort">
-        <option value="started">Date started</option>
-        <option value="finished">Date finished</option>
-        <option value="title">Title A&ndash;Z</option>
-      </select>
-    </label>
+    <div class="lib-controls">
+      <label class="sortwrap">Year
+        <select id="libYear"><option value="all">All years</option></select>
+      </label>
+      <label class="sortwrap">Sort
+        <select id="libSort">
+          <option value="started">Date started</option>
+          <option value="finished">Date finished</option>
+          <option value="title">Title A&ndash;Z</option>
+        </select>
+      </label>
+    </div>
   </div>
   <div class="bookcase"><div class="bc-rows" id="libRows"></div></div>
 </main>
@@ -603,14 +610,43 @@ function sortBooks(mode){
   return list.sort((a, b) => (b.start || '').localeCompare(a.start || ''));
 }
 
+/* The year filter lasts while the app is open (so Back from a book keeps
+   it) but isn't saved, so a fresh visit always starts on All years. */
+let yearFilter = 'all';
+
+/* Every year a book was being read in, from its start to its finish —
+   or to today if still reading. The same rule the calendar uses, so a
+   book that runs from December into January shows in both years. */
+function readingYears(b){
+  if (!b.start) return [];
+  const a = +b.start.slice(0, 4), z = +(b.end || TODAY).slice(0, 4);
+  const years = [];
+  for (let y = Math.min(a, z); y <= Math.max(a, z); y++) years.push(y);
+  return years;
+}
+
+/* Only years that actually have books are offered. */
+function renderYearOptions(){
+  const years = [...new Set(books.flatMap(readingYears))].sort((a, b) => b - a);
+  if (yearFilter !== 'all' && !years.includes(+yearFilter)) yearFilter = 'all';
+  $('#libYear').innerHTML = `<option value="all">All years</option>`
+    + years.map(y => `<option value="${y}">${y}</option>`).join('');
+  $('#libYear').value = String(yearFilter);
+}
+
 function renderLibrary(){
-  const all = sortBooks(sortMode);
+  renderYearOptions();
+  const all = sortBooks(sortMode)
+    .filter(b => yearFilter === 'all' || readingYears(b).includes(+yearFilter));
   $('#libSort').value = sortMode;
-  $('#libCount').textContent = all.length + (all.length === 1 ? ' book' : ' books');
+  $('#libCount').textContent = all.length + (all.length === 1 ? ' book' : ' books')
+    + (yearFilter === 'all' ? '' : ' in ' + yearFilter);
   $('#libRows').innerHTML = all.length
     ? all.map(shelfItem).join('')
     : `<p class="bc-empty">Nothing on the shelf yet.</p>`;
 }
+
+$('#libYear').onchange = e => { yearFilter = e.target.value; renderLibrary(); };
 
 $('#libSort').onchange = e => {
   sortMode = e.target.value;
