@@ -1,0 +1,960 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shelf — Reading Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme: light dark;
+  --paper:#faf7f2; --card:#fff; --ink:#241f1a; --muted:#7c7166; --line:#e7ddd0;
+  --accent:#9a3f2c; --accent-soft:#f3e5df; --shadow:0 1px 2px rgba(36,31,26,.06),0 8px 24px rgba(36,31,26,.08);
+  --radius:14px;
+  --serif:"Fraunces",Georgia,"Times New Roman",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{--paper:#15120f; --card:#211c17; --ink:#f1eae0; --muted:#a39686; --line:#332b23;
+        --accent:#e08a6a; --accent-soft:#3a271f; --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);}
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--paper); color:var(--ink); font-family:var(--sans);
+  font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  padding-bottom:64px;
+}
+button{font:inherit;color:inherit;cursor:pointer}
+h1,h2,h3{font-family:var(--serif);font-weight:500;margin:0;letter-spacing:-.01em}
+img{max-width:100%;display:block}
+.wrap{max-width:900px;margin:0 auto;padding:0 20px}
+
+/* ---------- top bar ---------- */
+.topbar{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--paper) 88%,transparent);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.topbar .wrap{display:flex;align-items:center;gap:12px;padding-block:14px}
+.brand{font-family:var(--serif);font-size:21px;letter-spacing:-.02em;margin-right:auto;
+  display:flex;align-items:center;gap:8px;background:none;border:0;padding:0}
+.brand span{color:var(--accent)}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:8px 15px;
+  font-size:14px;font-weight:500;transition:.15s;white-space:nowrap}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-primary:hover{filter:brightness(1.08);color:#fff}
+.btn-icon{padding:8px 11px}
+.btn-ghost{border-color:transparent;background:transparent}
+.btn-danger:hover{border-color:#c0392b;color:#c0392b}
+
+/* ---------- sections ---------- */
+section{margin-top:34px}
+.sec-head{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
+.sec-head h2{font-size:15px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;
+  font-family:var(--sans);color:var(--muted)}
+.sec-head .count{font-size:13px;color:var(--muted);margin-left:auto}
+
+/* ---------- cover art ---------- */
+.cover{aspect-ratio:2/3;border-radius:6px;background:var(--accent-soft);object-fit:cover;width:100%;
+  box-shadow:var(--shadow)}
+.cover-fallback{display:flex;align-items:center;justify-content:center;text-align:center;padding:10px;
+  font-family:var(--serif);font-size:12px;line-height:1.3;color:var(--accent);overflow:hidden}
+
+/* ---------- now reading ---------- */
+.now-grid{display:grid;gap:14px}
+.now-card{display:flex;gap:18px;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--radius);padding:18px;text-align:left;width:100%;box-shadow:var(--shadow);transition:.15s}
+.now-card:hover{transform:translateY(-2px);border-color:var(--accent)}
+.now-card .cover{width:96px;flex:none}
+.now-body{display:flex;flex-direction:column;min-width:0;padding-top:2px}
+.now-body h3{font-size:22px;line-height:1.25;margin-bottom:4px}
+.now-author{color:var(--muted);font-size:15px}
+.now-meta{margin-top:auto;padding-top:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+  font-size:13px;color:var(--muted)}
+.pill{border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12.5px;
+  display:inline-flex;gap:5px;align-items:center}
+.pill-accent{background:var(--accent-soft);border-color:transparent;color:var(--accent);font-weight:600}
+
+/* ---------- bookshelf ----------
+   Books stand on a wooden plank. The planks are drawn as a repeating
+   background stripe, so rows always line up no matter how many books
+   are on each one or how wide the window is. */
+:root{--wood1:#cfa77e;--wood2:#ae835b;--wood3:#8a6340;--shelf-back:#f0e6d8;
+      --slot:190px;--plank:15px}
+@media (prefers-color-scheme:dark){
+  :root{--wood1:#7d5a3c;--wood2:#654731;--wood3:#4a3324;--shelf-back:#1d1813}
+}
+.bookcase{background:var(--shelf-back);border-radius:var(--radius);padding:18px 18px 8px;
+  box-shadow:inset 0 2px 10px rgba(80,55,30,.14)}
+.bc-rows{display:flex;flex-wrap:wrap;align-content:flex-start;gap:0 16px;
+  background-image:repeating-linear-gradient(to bottom,
+    transparent 0, transparent var(--slot),
+    var(--wood1) var(--slot),
+    var(--wood2) calc(var(--slot) + 7px),
+    var(--wood3) calc(var(--slot) + var(--plank)));
+  background-position:0 0}
+.bc-rows.one-row{--slot:132px;gap:0 14px}
+.bc-item{height:var(--slot);margin-bottom:var(--plank);display:flex;align-items:flex-end;
+  background:none;border:0;padding:0;flex:none;position:relative}
+.bc-item .cover{width:auto;height:calc(var(--slot) * var(--bh,.9));aspect-ratio:2/3;border-radius:3px 5px 5px 3px;
+  box-shadow:-2px 0 0 rgba(0,0,0,.12) inset, 0 4px 7px rgba(60,40,20,.35);
+  transition:transform .16s ease}
+.bc-item .cover-fallback{font-size:12px;padding:8px}
+.bc-item:hover .cover,.bc-item:focus-visible .cover{transform:translateY(-9px) rotate(-1.5deg)}
+.bc-empty{padding:30px 4px 40px;color:var(--muted);font-size:14px}
+.lib-head{display:flex;align-items:baseline;gap:12px;margin:22px 0 14px}
+.lib-head h1{font-size:26px}
+.lib-head .count{font-size:13px;color:var(--muted);margin-left:auto}
+.sortwrap{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.sortwrap select{width:auto;padding:7px 11px;font-size:13.5px;border-radius:999px;cursor:pointer}
+
+/* ---------- calendar ---------- */
+.cal-head{display:flex;align-items:center;gap:6px;margin-bottom:12px;max-width:700px}
+.cal-head h3{font-size:19px;margin-right:auto}
+.cal-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;max-width:700px}
+.cal-dow div{text-align:center;font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--muted)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;max-width:700px}
+.cal-day{position:relative;aspect-ratio:3/4;border-radius:8px;border:1px solid var(--line);
+  background:var(--card);overflow:hidden;padding:0;display:block}
+.cal-day.blank{border:0;background:none;pointer-events:none}
+.cal-day.today{outline:2px solid var(--accent);outline-offset:1px}
+.cal-day .covers{position:absolute;inset:0;display:flex}
+.cal-day .covers img{flex:1;height:100%;object-fit:cover;min-width:0}
+.cal-day .covers .nocover{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;
+  background:var(--accent-soft);color:var(--accent);font-family:var(--serif);font-size:17px}
+.cal-day .num{position:absolute;top:3px;left:4px;font-size:11px;font-weight:600;color:var(--muted);
+  z-index:2;line-height:1.4}
+.cal-day.has .num{color:#fff;background:rgba(0,0,0,.55);border-radius:5px;padding:1px 5px;top:4px;left:4px}
+.cal-day .more{position:absolute;bottom:3px;right:4px;z-index:2;font-size:10px;font-weight:700;color:#fff;
+  background:rgba(0,0,0,.55);border-radius:4px;padding:1px 4px}
+.cal-day.out{opacity:.35}
+.cal-legend{margin-top:14px;font-size:12.5px;color:var(--muted)}
+
+/* ---------- book detail ---------- */
+.detail-top{display:flex;gap:22px;margin-top:26px}
+.detail-cover{width:150px;flex:none}
+.detail-cover .cover{margin-bottom:8px}
+.detail-info{min-width:0;flex:1}
+.detail-info h1{font-size:30px;line-height:1.15;margin-bottom:6px}
+.detail-author{color:var(--muted);font-size:16px;margin-bottom:16px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--muted);margin-bottom:6px}
+input[type=date],input[type=text],input[type=search],textarea,select{
+  font:inherit;font-size:15px;color:var(--ink);background:var(--card);border:1px solid var(--line);
+  border-radius:10px;padding:9px 12px;width:100%;outline:none}
+input:focus,textarea:focus,select:focus{border-color:var(--accent)}
+.row2{display:flex;gap:12px;flex-wrap:wrap}
+.row2 .field{flex:1;min-width:140px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:var(--card);gap:2px}
+.seg button{border:0;background:none;border-radius:999px;padding:6px 14px;font-size:13.5px;color:var(--muted)}
+.seg button[aria-pressed=true]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.stars-input{display:flex;gap:4px;align-items:center}
+.stars-input button{background:none;border:0;padding:2px;line-height:0;color:var(--line)}
+.stars-input button.on{color:var(--accent)}
+.stars-input button:hover{transform:scale(1.12)}
+.stars-input .btn{color:var(--muted);text-decoration:underline}
+.stars-input .btn:hover{transform:none;color:var(--accent)}
+.stars-input svg{width:30px;height:30px;fill:currentColor}
+.rating-text{font-size:13px;color:var(--muted);margin-left:8px}
+textarea{min-height:190px;resize:vertical;line-height:1.65;font-size:15px}
+.saved-hint{font-size:12px;color:var(--muted);height:14px;margin-top:6px}
+.detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:28px;padding-top:20px;border-top:1px solid var(--line)}
+
+/* ---------- dialogs ---------- */
+dialog{border:0;border-radius:var(--radius);padding:0;background:var(--card);color:var(--ink);
+  width:min(560px,94vw);box-shadow:0 20px 60px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(20,15,10,.45);backdrop-filter:blur(2px)}
+.dlg-head{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid var(--line)}
+.dlg-head h2{font-size:18px;margin-right:auto}
+.dlg-body{padding:18px;max-height:70vh;overflow-y:auto}
+.results{display:flex;flex-direction:column;gap:6px;margin-top:14px}
+.result{display:flex;gap:12px;align-items:center;text-align:left;width:100%;background:none;
+  border:1px solid transparent;border-radius:10px;padding:8px}
+.result:hover{background:var(--accent-soft);border-color:var(--accent)}
+.result img,.result .ph{width:40px;height:60px;flex:none;border-radius:4px;object-fit:cover;background:var(--accent-soft)}
+.result .rt{font-size:14.5px;font-weight:500;line-height:1.3}
+.result .ra{font-size:13px;color:var(--muted)}
+.manual-grid{display:flex;gap:18px}
+.manual-cover{width:122px;flex:none;display:flex;flex-direction:column;gap:8px}
+.manual-fields{flex:1;min-width:0}
+.manual-cover .cover{margin-bottom:2px}
+.err{color:#c0392b;font-size:13px;margin:10px 0 0;min-height:16px}
+@media (max-width:560px){.manual-grid{flex-direction:column;align-items:flex-start}}
+.cover-options{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:10px;margin-top:14px}
+.cover-options button{background:none;border:2px solid transparent;border-radius:8px;padding:0;line-height:0}
+.cover-options button:hover{border-color:var(--accent)}
+.hint{font-size:13px;color:var(--muted);margin:0 0 10px}
+.empty{text-align:center;padding:36px 20px;border:1px dashed var(--line);border-radius:var(--radius);color:var(--muted)}
+.empty p{margin:0 0 14px}
+.spin{text-align:center;color:var(--muted);font-size:14px;padding:18px}
+.menu{position:absolute;right:20px;top:60px;background:var(--card);border:1px solid var(--line);
+  border-radius:12px;box-shadow:var(--shadow);padding:6px;z-index:40;min-width:190px}
+.menu button{display:block;width:100%;text-align:left;background:none;border:0;padding:9px 12px;
+  border-radius:8px;font-size:14px}
+.menu button:hover{background:var(--accent-soft);color:var(--accent)}
+.hide{display:none !important}
+@media (max-width:560px){
+  .now-card{gap:14px;padding:14px}
+  .now-card .cover{width:80px}
+  .now-body h3{font-size:19px}
+  .detail-top{flex-direction:column;gap:16px}
+  .detail-cover{width:130px}
+  .detail-info h1{font-size:25px}
+  .cal-grid,.cal-dow{gap:4px}
+  .bc-rows.one-row{--slot:112px;gap:0 10px}
+  .bc-rows{--slot:150px}
+  .bookcase{padding:14px 12px 8px}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <button class="brand" id="brandBtn">Shelf<span>.</span></button>
+    <button class="btn btn-primary" id="addBtn">+ Add book</button>
+    <button class="btn btn-icon btn-ghost" id="menuBtn" aria-label="More options">&#8942;</button>
+  </div>
+  <div class="menu hide" id="menu">
+    <button id="mBackup">Back up my books</button>
+    <button id="mRestore">Restore from backup</button>
+    <button id="mSamples">Remove sample books</button>
+  </div>
+</header>
+
+<!-- ============ HOME ============ -->
+<main id="home" class="wrap">
+
+  <section id="nowSec">
+    <div class="sec-head"><h2>Currently reading</h2></div>
+    <div class="now-grid" id="nowGrid"></div>
+  </section>
+
+  <section id="shelfSec">
+    <div class="sec-head"><h2>My shelf</h2><span class="count" id="shelfCount"></span>
+      <button class="btn" id="seeAllBtn" style="margin-left:10px">See all &#8250;</button></div>
+    <div class="bookcase"><div class="bc-rows one-row" id="shelf"></div></div>
+  </section>
+
+  <section id="calSec">
+    <div class="cal-head">
+      <h3 id="calTitle"></h3>
+      <button class="btn btn-icon" id="calPrev" aria-label="Previous month">&#8249;</button>
+      <button class="btn" id="calToday">Today</button>
+      <button class="btn btn-icon" id="calNext" aria-label="Next month">&#8250;</button>
+    </div>
+    <div class="cal-dow"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div>
+    <div class="cal-grid" id="calGrid"></div>
+    <p class="cal-legend">Covers fill every day between a book&rsquo;s start and end date &mdash; no daily logging needed. Tap a day to open the book.</p>
+  </section>
+
+</main>
+
+<!-- ============ FULL BOOKCASE ============ -->
+<main id="library" class="wrap hide">
+  <p style="margin:18px 0 0"><button class="btn btn-ghost" id="libBack">&#8249; Back</button></p>
+  <div class="lib-head"><h1>My bookshelf</h1>
+    <span class="count" id="libCount"></span>
+    <label class="sortwrap">Sort
+      <select id="libSort">
+        <option value="started">Date started</option>
+        <option value="finished">Date finished</option>
+        <option value="title">Title A&ndash;Z</option>
+      </select>
+    </label>
+  </div>
+  <div class="bookcase"><div class="bc-rows" id="libRows"></div></div>
+</main>
+
+<!-- ============ BOOK DETAIL ============ -->
+<main id="detail" class="wrap hide">
+  <p style="margin:18px 0 0"><button class="btn btn-ghost" id="backBtn">&#8249; Back</button></p>
+
+  <div class="detail-top">
+    <div class="detail-cover">
+      <img class="cover" id="dCover" alt="">
+      <button class="btn" style="width:100%" id="dChangeCover">Change cover</button>
+    </div>
+
+    <div class="detail-info">
+      <h1 contenteditable="plaintext-only" id="dTitle" spellcheck="false"></h1>
+      <p class="detail-author"><span contenteditable="plaintext-only" id="dAuthor" spellcheck="false"></span></p>
+
+      <div class="field">
+        <label>Format</label>
+        <div class="seg" id="dFormat">
+          <button data-f="physical" aria-pressed="false">&#128214; Physical</button>
+          <button data-f="ebook" aria-pressed="false">&#128241; Ebook</button>
+          <button data-f="audio" aria-pressed="false">&#127911; Audio</button>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="field"><label>Started</label><input type="date" id="dStart"></div>
+        <div class="field"><label>Finished</label><input type="date" id="dEnd"></div>
+      </div>
+      <p style="margin:-6px 0 14px"><button class="btn" id="dFinishToday">Finished today</button>
+        <button class="btn hide" id="dStillReading">Still reading</button></p>
+
+      <div class="field">
+        <label>Rating</label>
+        <div class="stars-input" id="dStars"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="field" style="margin-top:22px">
+    <label>Notes</label>
+    <textarea id="dNotes" placeholder="Thoughts, favorite lines, who you&rsquo;d recommend it to&hellip;"></textarea>
+    <div class="saved-hint" id="dSaved"></div>
+  </div>
+
+  <div class="detail-actions">
+    <button class="btn btn-danger" id="dDelete">Delete this book</button>
+  </div>
+</main>
+
+<!-- ============ SEARCH DIALOG ============ -->
+<dialog id="searchDlg">
+  <div class="dlg-head"><h2>Add a book</h2><button class="btn btn-ghost btn-icon" data-close>&#10005;</button></div>
+  <div class="dlg-body">
+    <input type="search" id="sQuery" placeholder="Search by title or author&hellip;" autocomplete="off">
+    <div class="results" id="sResults"></div>
+    <p class="hint" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+      Can&rsquo;t find it? <button class="btn" id="sManual">Add it manually</button></p>
+  </div>
+</dialog>
+
+<!-- ============ ADD MANUALLY DIALOG ============ -->
+<dialog id="manualDlg">
+  <div class="dlg-head"><h2>Add a book manually</h2>
+    <button class="btn btn-ghost btn-icon" data-close>&#10005;</button></div>
+  <div class="dlg-body">
+    <div class="manual-grid">
+      <div class="manual-cover">
+        <img class="cover" id="mCoverImg" alt="">
+        <button class="btn" id="mUpload">Upload cover</button>
+        <button class="btn btn-ghost hide" id="mCoverClear" style="font-size:13px">Remove</button>
+        <input type="file" id="mFile" accept="image/*" class="hide">
+      </div>
+      <div class="manual-fields">
+        <div class="field"><label>Title</label>
+          <input type="text" id="mTitle" placeholder="Book title"></div>
+        <div class="field"><label>Author</label>
+          <input type="text" id="mAuthor" placeholder="Author"></div>
+        <div class="field"><label>Format</label>
+          <div class="seg" id="mFormat">
+            <button data-f="physical" aria-pressed="true">&#128214; Physical</button>
+            <button data-f="ebook" aria-pressed="false">&#128241; Ebook</button>
+            <button data-f="audio" aria-pressed="false">&#127911; Audio</button>
+          </div></div>
+        <div class="field" style="margin-bottom:0"><label>Started</label>
+          <input type="date" id="mStart"></div>
+      </div>
+    </div>
+    <p class="err" id="mError"></p>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+      <button class="btn btn-primary" id="mSave">Add to shelf</button>
+      <button class="btn btn-ghost" id="mBackToSearch">&#8249; Back to search</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ COVER DIALOG ============ -->
+<dialog id="coverDlg">
+  <div class="dlg-head"><h2>Change cover</h2><button class="btn btn-ghost btn-icon" data-close>&#10005;</button></div>
+  <div class="dlg-body">
+    <p class="hint">Pick another edition&rsquo;s cover:</p>
+    <input type="search" id="cQuery" placeholder="Search covers&hellip;" autocomplete="off">
+    <div class="cover-options" id="cOptions"></div>
+    <p class="hint" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line)">Or use your own image:</p>
+    <div class="row2">
+      <div class="field" style="margin:0"><input type="text" id="cUrl" placeholder="Paste an image link"></div>
+      <button class="btn" id="cUrlSave">Use link</button>
+    </div>
+    <p style="margin-top:12px"><button class="btn" id="cUpload">Upload from this device</button>
+      <input type="file" id="cFile" accept="image/*" class="hide"></p>
+  </div>
+</dialog>
+
+<!-- ============ DAY DIALOG ============ -->
+<dialog id="dayDlg">
+  <div class="dlg-head"><h2 id="dayTitle">Books</h2><button class="btn btn-ghost btn-icon" data-close>&#10005;</button></div>
+  <div class="dlg-body"><div class="results" id="dayResults"></div></div>
+</dialog>
+
+<input type="file" id="restoreFile" accept="application/json" class="hide">
+
+<script>
+/* ============================================================
+   Shelf — a local reading tracker.
+   All data lives in this browser's localStorage. Book search and
+   cover art come from Open Library (openlibrary.org), a free,
+   no-signup book database.
+   ============================================================ */
+
+const $  = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ---------- dates (kept as plain 'YYYY-MM-DD' text so time zones
+     can never shift a day by one) ---------- */
+const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const TODAY = iso(new Date());
+const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
+const pretty = s => s ? new Date(s + 'T00:00:00')
+  .toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'}) : '';
+const prettyShort = s => s ? new Date(s + 'T00:00:00')
+  .toLocaleDateString(undefined, {month:'short', day:'numeric'}) : '';
+
+/* ---------- storage ---------- */
+const KEY = 'shelf.books.v1';
+let books = [];
+const uid  = () => Math.random().toString(36).slice(2, 10);
+
+/* Some browsers block storage (private windows, files opened oddly) and some
+   run out of room. Never let that crash the page — just warn once. */
+let storageOK = true;
+function warnStorage(msg){
+  if (!storageOK) return;
+  storageOK = false;
+  const bar = document.createElement('div');
+  bar.style.cssText = 'background:#9a3f2c;color:#fff;padding:10px 20px;font-size:13.5px;text-align:center';
+  bar.textContent = msg;
+  document.body.prepend(bar);
+}
+function save(){
+  try { localStorage.setItem(KEY, JSON.stringify(books)); }
+  catch (e) {
+    warnStorage(e.name === 'QuotaExceededError'
+      ? 'Storage is full — try a smaller cover image. Recent changes were not saved.'
+      : 'This browser is blocking storage, so your changes won\u2019t be remembered after you close the tab.');
+  }
+}
+function load(){
+  let raw = null;
+  try { raw = localStorage.getItem(KEY); }
+  catch { warnStorage('This browser is blocking storage, so your changes won\u2019t be remembered after you close the tab.'); }
+  if (raw){ try { books = JSON.parse(raw) || []; } catch { books = []; } }
+  else { books = seed(); save(); }
+}
+
+const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+const olCover = (id, size) => `https://covers.openlibrary.org/b/id/${id}-${size}.jpg`;
+
+function seed(){
+  return [
+    { id:uid(), sample:true, title:'The Wager', author:'David Grann',
+      cover:olCover(13245246,'L'), format:'physical',
+      start:daysAgo(6), end:null, rating:0,
+      notes:'' },
+    { id:uid(), sample:true, title:'Circe', author:'Madeline Miller',
+      cover:olCover(8739376,'L'), format:'audio',
+      start:daysAgo(19), end:daysAgo(8), rating:4,
+      notes:'The narrator was wonderful. Loved the slow middle section.' },
+    { id:uid(), sample:true, title:'Tomorrow, and Tomorrow, and Tomorrow', author:'Gabrielle Zevin',
+      cover:olCover(12859975,'L'), format:'ebook',
+      start:daysAgo(34), end:daysAgo(21), rating:5,
+      notes:'Read this in four sittings. The chapter about Sadie’s game broke me.' },
+    { id:uid(), sample:true, title:'Klara and the Sun', author:'Kazuo Ishiguro',
+      cover:olCover(10648686,'L'), format:'physical',
+      start:daysAgo(58), end:daysAgo(41), rating:3,
+      notes:'' }
+  ];
+}
+
+const byId = id => books.find(b => b.id === id);
+const FORMATS = {physical:'\u{1F4D6} Physical', ebook:'\u{1F4F1} Ebook', audio:'\u{1F3A7} Audiobook'};
+
+/* ---------- cover rendering (with a graceful fallback) ---------- */
+function coverHTML(b, extra = ''){
+  if (b.cover) return `<img class="cover ${extra}" src="${esc(b.cover)}" alt="Cover of ${esc(b.title)}"
+    data-t="${esc(b.title)}" onerror="coverFail(this)">`;
+  return `<div class="cover cover-fallback ${extra}">${esc(b.title)}</div>`;
+}
+function coverFail(img){
+  const d = document.createElement('div');
+  d.className = img.className + ' cover-fallback';
+  d.textContent = img.dataset.t || '';
+  img.replaceWith(d);
+}
+const starsText = n => n ? '★'.repeat(n) + '☆'.repeat(5 - n) : '';
+
+/* ============================================================
+   HOME
+   ============================================================ */
+function renderHome(){ renderNow(); renderShelf(); renderCalendar(); refreshMenu(); }
+
+function renderNow(){
+  const reading = books.filter(b => b.start && !b.end).sort((a,b) => b.start.localeCompare(a.start));
+  const g = $('#nowGrid');
+  if (!reading.length){
+    g.innerHTML = `<div class="empty"><p>Nothing in progress right now.</p>
+      <button class="btn btn-primary" onclick="openSearch()">Add a book</button></div>`;
+    return;
+  }
+  g.innerHTML = reading.map(b => {
+    const days = Math.round((new Date(TODAY) - new Date(b.start)) / 86400000) + 1;
+    return `<button class="now-card" onclick="openBook('${b.id}')">
+      ${coverHTML(b)}
+      <div class="now-body">
+        <h3>${esc(b.title)}</h3>
+        <div class="now-author">${esc(b.author)}</div>
+        <div class="now-meta">
+          <span class="pill pill-accent">Day ${days}</span>
+          <span class="pill">${FORMATS[b.format] || FORMATS.physical}</span>
+          <span>Started ${pretty(b.start)}</span>
+        </div>
+      </div></button>`;
+  }).join('');
+}
+
+/* Real books aren't all the same height, so vary them a little.
+   Derived from the book's id so a book always stands the same height. */
+function bookHeight(id){
+  let h = 0;
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 997;
+  return (0.80 + (h % 5) * 0.045).toFixed(3);   // 0.80 - 0.98 of the shelf slot
+}
+
+function shelfItem(b){
+  return `<button class="bc-item" style="--bh:${bookHeight(b.id)}"
+      onclick="openBook('${b.id}')" title="${esc(b.title)} — ${esc(b.author)}">
+    ${coverHTML(b)}
+  </button>`;
+}
+
+const byNewest = () => [...books].sort((a, b) => (b.start || '').localeCompare(a.start || ''));
+
+function renderShelf(){
+  const all = byNewest();
+  const shown = all.slice(0, 5);          // the dashboard shows one short row
+  $('#shelfCount').textContent = all.length + (all.length === 1 ? ' book' : ' books');
+  $('#shelf').innerHTML = all.length
+    ? shown.map(shelfItem).join('')
+    : `<p class="bc-empty">Books you add will line up here.</p>`;
+}
+
+/* ---------- the full bookcase ---------- */
+const SORT_KEY = 'shelf.sort';
+let sortMode = 'started';
+try { sortMode = localStorage.getItem(SORT_KEY) || 'started'; } catch {}
+
+function sortBooks(mode){
+  const list = [...books];
+  if (mode === 'title')
+    return list.sort((a, b) =>
+      (a.title || '').localeCompare(b.title || '', undefined, {sensitivity:'base'}));
+  if (mode === 'finished')
+    /* books still in progress have no finish date — show them first */
+    return list.sort((a, b) => {
+      if (!a.end && !b.end) return (b.start || '').localeCompare(a.start || '');
+      if (!a.end) return -1;
+      if (!b.end) return 1;
+      return b.end.localeCompare(a.end);
+    });
+  return list.sort((a, b) => (b.start || '').localeCompare(a.start || ''));
+}
+
+function renderLibrary(){
+  const all = sortBooks(sortMode);
+  $('#libSort').value = sortMode;
+  $('#libCount').textContent = all.length + (all.length === 1 ? ' book' : ' books');
+  $('#libRows').innerHTML = all.length
+    ? all.map(shelfItem).join('')
+    : `<p class="bc-empty">Nothing on the shelf yet.</p>`;
+}
+
+$('#libSort').onchange = e => {
+  sortMode = e.target.value;
+  try { localStorage.setItem(SORT_KEY, sortMode); } catch {}
+  renderLibrary();
+};
+
+/* ---------- calendar ---------- */
+let calY, calM;
+(() => { const n = new Date(); calY = n.getFullYear(); calM = n.getMonth(); })();
+
+/* Every day from start through end (or through today if still reading). */
+const booksOnDay = day => books.filter(b => b.start && b.start <= day && day <= (b.end || TODAY));
+
+function calImgFail(img){
+  const d = document.createElement('div');
+  d.className = 'nocover';
+  d.textContent = img.dataset.t || '?';
+  img.replaceWith(d);
+}
+
+function renderCalendar(){
+  const first = new Date(calY, calM, 1);
+  $('#calTitle').textContent = first.toLocaleDateString(undefined, {month:'long', year:'numeric'});
+
+  const lead = first.getDay();
+  const len  = new Date(calY, calM + 1, 0).getDate();
+  let html = '';
+  for (let i = 0; i < lead; i++) html += `<div class="cal-day blank"></div>`;
+
+  for (let d = 1; d <= len; d++){
+    const day = iso(new Date(calY, calM, d));
+    const on  = booksOnDay(day);
+    const shown = on.slice(0, 3);
+    /* books without cover art still get a tile, so the day never looks empty */
+    const covers = shown.map(b => b.cover
+      ? `<img src="${esc(b.cover)}" alt="" data-t="${esc((b.title || '?')[0])}" onerror="calImgFail(this)">`
+      : `<div class="nocover">${esc((b.title || '?')[0])}</div>`).join('');
+    html += `<button class="cal-day ${on.length ? 'has' : ''} ${day === TODAY ? 'today' : ''}"
+        data-day="${day}" ${on.length ? '' : 'tabindex="-1"'}>
+      ${on.length ? `<div class="covers">${covers}</div>` : ''}
+      <span class="num">${d}</span>
+      ${on.length > 3 ? `<span class="more">+${on.length - 3}</span>` : ''}
+    </button>`;
+  }
+  $('#calGrid').innerHTML = html;
+}
+
+$('#calPrev').onclick  = () => { if (--calM < 0){ calM = 11; calY--; } renderCalendar(); };
+$('#calNext').onclick  = () => { if (++calM > 11){ calM = 0;  calY++; } renderCalendar(); };
+$('#calToday').onclick = () => { const n = new Date(); calY = n.getFullYear(); calM = n.getMonth(); renderCalendar(); };
+
+$('#calGrid').addEventListener('click', e => {
+  const cell = e.target.closest('.cal-day'); if (!cell) return;
+  const on = booksOnDay(cell.dataset.day);
+  if (!on.length) return;
+  if (on.length === 1) return openBook(on[0].id);
+  $('#dayTitle').textContent = pretty(cell.dataset.day);
+  $('#dayResults').innerHTML = on.map(b => `<button class="result" onclick="$('#dayDlg').close();openBook('${b.id}')">
+      ${b.cover ? `<img src="${esc(b.cover)}" alt="">` : `<div class="ph"></div>`}
+      <div><div class="rt">${esc(b.title)}</div><div class="ra">${esc(b.author)}</div></div></button>`).join('');
+  $('#dayDlg').showModal();
+});
+
+/* ============================================================
+   BOOK DETAIL
+   ============================================================ */
+let currentId = null;
+let returnTo = 'home';   // so Back from a book goes where you came from
+
+function showView(name){
+  ['home', 'library', 'detail'].forEach(v =>
+    $('#' + v).classList.toggle('hide', v !== name));
+  window.scrollTo(0, 0);
+}
+
+function openBook(id){
+  const b = byId(id); if (!b) return;
+  currentId = id;
+  returnTo = $('#library').classList.contains('hide') ? 'home' : 'library';
+  showView('detail');
+  $('#dCover').src = b.cover || BLANK;
+  $('#dCover').alt = b.cover ? 'Cover of ' + b.title : 'No cover yet';
+  $('#dCover').onerror = function(){ this.src = BLANK; };
+  $('#dTitle').textContent  = b.title;
+  $('#dAuthor').textContent = b.author;
+  $('#dStart').value = b.start || '';
+  $('#dEnd').value   = b.end   || '';
+  $('#dNotes').value = b.notes || '';
+  $$('#dFormat button').forEach(x => x.setAttribute('aria-pressed', x.dataset.f === (b.format || 'physical')));
+  $('#dFinishToday').classList.toggle('hide', !!b.end);
+  $('#dStillReading').classList.toggle('hide', !b.end);
+  $('#dSaved').textContent = '';
+  renderStars(b.rating || 0);
+}
+
+function showHome(){
+  currentId = null;
+  renderHome();
+  showView('home');
+}
+function showLibrary(){
+  currentId = null;
+  renderLibrary();
+  showView('library');
+}
+/* Back from a book returns to the bookcase if that's where you tapped it. */
+$('#backBtn').onclick = () => returnTo === 'library' ? showLibrary() : showHome();
+$('#brandBtn').onclick = showHome;
+$('#seeAllBtn').onclick = showLibrary;
+$('#libBack').onclick = showHome;
+
+/* Any edit writes straight to storage. */
+function edit(patch, hint = 'Saved'){
+  const b = byId(currentId); if (!b) return;
+  Object.assign(b, patch); save();
+  $('#dSaved').textContent = hint;
+  clearTimeout(edit._t);
+  edit._t = setTimeout(() => $('#dSaved').textContent = '', 1600);
+}
+
+const STAR = `<svg viewBox="0 0 24 24"><path d="M12 2.6l2.9 5.9 6.5.95-4.7 4.6 1.1 6.5-5.8-3.05L6.2 20.5l1.1-6.5-4.7-4.6 6.5-.95z"/></svg>`;
+function renderStars(n){
+  $('#dStars').innerHTML = [1,2,3,4,5].map(i =>
+    `<button class="${i <= n ? 'on' : ''}" data-v="${i}" aria-label="${i} star${i>1?'s':''}">${STAR}</button>`).join('')
+    + (n ? `<span class="rating-text">${n} / 5 &mdash; <button class="btn btn-ghost" style="padding:2px 8px;font-size:12px" data-v="0">clear</button></span>` : '');
+}
+$('#dStars').addEventListener('click', e => {
+  const btn = e.target.closest('[data-v]'); if (!btn) return;
+  const v = +btn.dataset.v;
+  edit({rating: v}); renderStars(v);
+});
+
+$('#dFormat').addEventListener('click', e => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  $$('#dFormat button').forEach(x => x.setAttribute('aria-pressed', x === btn));
+  edit({format: btn.dataset.f});
+});
+
+$('#dStart').onchange = e => edit({start: e.target.value || null});
+$('#dEnd').onchange = e => {
+  edit({end: e.target.value || null});
+  $('#dFinishToday').classList.toggle('hide', !!e.target.value);
+  $('#dStillReading').classList.toggle('hide', !e.target.value);
+};
+$('#dFinishToday').onclick = () => { $('#dEnd').value = TODAY; $('#dEnd').onchange({target: $('#dEnd')}); };
+$('#dStillReading').onclick = () => { $('#dEnd').value = '';   $('#dEnd').onchange({target: $('#dEnd')}); };
+
+const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+$('#dNotes').addEventListener('input', debounce(e => edit({notes: e.target.value}), 500));
+$('#dTitle').addEventListener('input',  debounce(e => edit({title:  e.target.textContent.trim()}), 500));
+$('#dAuthor').addEventListener('input', debounce(e => edit({author: e.target.textContent.trim()}), 500));
+
+$('#dDelete').onclick = () => {
+  const b = byId(currentId);
+  if (!confirm(`Delete "${b.title}"? This can't be undone.`)) return;
+  books = books.filter(x => x.id !== currentId);
+  save(); showHome();
+};
+
+/* ============================================================
+   SEARCH  (Open Library — free, no account needed)
+   ============================================================ */
+let searchAbort = null;
+
+async function olSearch(q, limit = 12){
+  if (searchAbort) searchAbort.abort();
+  searchAbort = new AbortController();
+  const url = 'https://openlibrary.org/search.json?q=' + encodeURIComponent(q)
+    + '&fields=key,title,author_name,cover_i,first_publish_year&limit=' + limit;
+  const r = await fetch(url, {signal: searchAbort.signal});
+  if (!r.ok) throw new Error('Search failed');
+  return (await r.json()).docs || [];
+}
+
+function openSearch(){
+  $('#sQuery').value = '';
+  $('#sResults').innerHTML = `<p class="hint">Type a title or author to look it up.</p>`;
+  $('#searchDlg').showModal();
+  setTimeout(() => $('#sQuery').focus(), 50);
+}
+$('#addBtn').onclick = openSearch;
+
+$('#sQuery').addEventListener('input', debounce(async e => {
+  const q = e.target.value.trim();
+  const box = $('#sResults');
+  if (q.length < 2){ box.innerHTML = `<p class="hint">Type a title or author to look it up.</p>`; return; }
+  box.innerHTML = `<div class="spin">Searching&hellip;</div>`;
+  try {
+    const docs = await olSearch(q);
+    if (!docs.length){ box.innerHTML = `<p class="hint">No matches. You can still add it manually below.</p>`; return; }
+    box.innerHTML = docs.map((d, i) => `<button class="result" data-i="${i}">
+        ${d.cover_i ? `<img src="${olCover(d.cover_i,'S')}" alt="" onerror="this.style.visibility='hidden'">`
+                    : `<div class="ph"></div>`}
+        <div><div class="rt">${esc(d.title)}</div>
+        <div class="ra">${esc((d.author_name || ['Unknown author'])[0])}${d.first_publish_year ? ' &middot; ' + d.first_publish_year : ''}</div>
+        </div></button>`).join('');
+    box.dataset.docs = JSON.stringify(docs);
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    box.innerHTML = `<p class="hint">Couldn&rsquo;t reach the book database &mdash; check your internet connection, or add the book manually below.</p>`;
+  }
+}, 350));
+
+$('#sResults').addEventListener('click', e => {
+  const btn = e.target.closest('.result'); if (!btn) return;
+  const d = JSON.parse($('#sResults').dataset.docs || '[]')[+btn.dataset.i];
+  if (!d) return;
+  addBook({
+    title: d.title,
+    author: (d.author_name || ['Unknown author'])[0],
+    cover: d.cover_i ? olCover(d.cover_i, 'L') : ''
+  });
+});
+
+/* Books added from search start today and open straight to their page. */
+function addBook({title, author, cover, format = 'physical', start = TODAY}){
+  const b = {id:uid(), title, author, cover, format, start,
+             end:null, rating:0, notes:''};
+  books.push(b); save();
+  $('#searchDlg').close();
+  $('#manualDlg').close();
+  renderHome();
+  openBook(b.id);
+}
+
+/* ============================================================
+   ADD MANUALLY  (replaces the search popup)
+   ============================================================ */
+let manualCover = '';
+
+function showManualCover(url){
+  manualCover = url;
+  $('#mCoverImg').src = url || BLANK;
+  $('#mCoverClear').classList.toggle('hide', !url);
+}
+
+$('#sManual').onclick = () => {
+  const typed = $('#sQuery').value.trim();
+  $('#searchDlg').close();
+  $('#mTitle').value  = typed;        // carry over whatever was searched for
+  $('#mAuthor').value = '';
+  $('#mStart').value  = TODAY;
+  $('#mError').textContent = '';
+  showManualCover('');
+  $$('#mFormat button').forEach(b => b.setAttribute('aria-pressed', b.dataset.f === 'physical'));
+  $('#manualDlg').showModal();
+  setTimeout(() => $('#mTitle').focus(), 50);
+};
+
+$('#mBackToSearch').onclick = () => { $('#manualDlg').close(); openSearch(); };
+
+$('#mFormat').addEventListener('click', e => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  $$('#mFormat button').forEach(b => b.setAttribute('aria-pressed', b === btn));
+});
+
+$('#mUpload').onclick = () => $('#mFile').click();
+$('#mCoverClear').onclick = () => showManualCover('');
+$('#mFile').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) shrinkImage(f, showManualCover);
+  e.target.value = '';
+});
+
+$('#mSave').onclick = () => {
+  const title = $('#mTitle').value.trim();
+  if (!title){ $('#mError').textContent = 'Please give the book a title.'; $('#mTitle').focus(); return; }
+  addBook({
+    title,
+    author: $('#mAuthor').value.trim() || 'Unknown author',
+    cover:  manualCover,
+    format: $('#mFormat').querySelector('[aria-pressed=true]').dataset.f,
+    start:  $('#mStart').value || TODAY
+  });
+};
+
+/* Enter in the title or author field saves the book */
+['#mTitle', '#mAuthor'].forEach(sel => $(sel).addEventListener('keydown', e => {
+  if (e.key === 'Enter'){ e.preventDefault(); $('#mSave').click(); }
+}));
+
+/* ============================================================
+   COVER PICKER
+   ============================================================ */
+$('#dChangeCover').onclick = () => {
+  const b = byId(currentId);
+  $('#cUrl').value = '';
+  $('#cQuery').value = `${b.title} ${b.author}`.trim();
+  $('#coverDlg').showModal();
+  loadCoverOptions($('#cQuery').value);
+};
+
+async function loadCoverOptions(q){
+  const box = $('#cOptions');
+  box.innerHTML = `<p class="hint">Looking for covers&hellip;</p>`;
+  try {
+    const docs = await olSearch(q, 24);
+    const ids = [...new Set(docs.map(d => d.cover_i).filter(Boolean))].slice(0, 12);
+    box.innerHTML = ids.length
+      ? ids.map(id => `<button data-cover="${olCover(id,'L')}">
+          <img class="cover" src="${olCover(id,'M')}" alt="" onerror="this.parentNode.remove()"></button>`).join('')
+      : `<p class="hint">No covers found for that search.</p>`;
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    box.innerHTML = `<p class="hint">Couldn&rsquo;t reach the cover database. Use a link or an upload instead.</p>`;
+  }
+}
+$('#cQuery').addEventListener('input', debounce(e => loadCoverOptions(e.target.value.trim()), 400));
+
+$('#cOptions').addEventListener('click', e => {
+  const btn = e.target.closest('[data-cover]'); if (!btn) return;
+  setCover(btn.dataset.cover);
+});
+$('#cUrlSave').onclick = () => { const u = $('#cUrl').value.trim(); if (u) setCover(u); };
+
+function setCover(url){
+  edit({cover: url});
+  $('#dCover').replaceWith(Object.assign(document.createElement('img'),
+    {className:'cover', id:'dCover', src:url, alt:''}));
+  $('#coverDlg').close();
+}
+
+/* Uploaded images are shrunk before saving so they don't fill up storage.
+   Shared by this dialog and the "add manually" one. */
+function shrinkImage(file, done){
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const w = Math.min(500, img.width), h = img.height * (w / img.width);
+      const c = Object.assign(document.createElement('canvas'), {width:w, height:h});
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      try { done(c.toDataURL('image/jpeg', 0.82)); }
+      catch { alert('That image could not be saved. Try a smaller one.'); }
+    };
+    img.onerror = () => alert("That file doesn't look like an image.");
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+$('#cUpload').onclick = () => $('#cFile').click();
+$('#cFile').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) shrinkImage(f, setCover);
+  e.target.value = '';
+});
+
+/* ============================================================
+   MENU: backup / restore / samples
+   ============================================================ */
+$('#menuBtn').onclick = e => { e.stopPropagation(); $('#menu').classList.toggle('hide'); refreshMenu(); };
+document.addEventListener('click', () => $('#menu').classList.add('hide'));
+$('#menu').addEventListener('click', e => e.stopPropagation());
+function refreshMenu(){ $('#mSamples').classList.toggle('hide', !books.some(b => b.sample)); }
+
+$('#mBackup').onclick = () => {
+  const blob = new Blob([JSON.stringify(books, null, 2)], {type:'application/json'});
+  const a = Object.assign(document.createElement('a'),
+    {href:URL.createObjectURL(blob), download:`shelf-backup-${TODAY}.json`});
+  a.click(); URL.revokeObjectURL(a.href);
+  $('#menu').classList.add('hide');
+};
+$('#mRestore').onclick = () => $('#restoreFile').click();
+$('#restoreFile').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  f.text().then(t => {
+    const data = JSON.parse(t);
+    if (!Array.isArray(data)) throw new Error('bad file');
+    if (!confirm(`Replace your current ${books.length} book(s) with ${data.length} from this backup?`)) return;
+    books = data; save(); showHome();
+  }).catch(() => alert("That doesn't look like a Shelf backup file."));
+  e.target.value = '';
+});
+$('#mSamples').onclick = () => {
+  books = books.filter(b => !b.sample);
+  save(); showHome();
+  $('#menu').classList.add('hide');
+};
+
+/* dialog close buttons */
+$$('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
+
+/* ---------- go ---------- */
+load();
+renderHome();
+</script>
+</body>
+</html>
