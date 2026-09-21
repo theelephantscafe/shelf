@@ -108,7 +108,8 @@ section{margin-top:34px}
     var(--wood2) calc(var(--slot) + 7px),
     var(--wood3) calc(var(--slot) + var(--plank)));
   background-position:0 0}
-.bc-rows.one-row{--slot:132px;gap:0 14px}
+.bc-rows.one-row{--slot:132px;gap:0 14px;height:calc(var(--slot) + var(--plank));
+  clip-path:inset(-24px -24px 0 -24px)}
 .bc-item{height:var(--slot);margin-bottom:var(--plank);display:flex;align-items:flex-end;
   background:none;border:0;padding:0;flex:none;position:relative}
 .bc-item .cover{width:auto;height:calc(var(--slot) * var(--bh,.9));aspect-ratio:2/3;border-radius:3px 5px 5px 3px;
@@ -571,7 +572,10 @@ const byNewest = () => [...books].sort((a, b) => (b.start || '').localeCompare(a
 
 function renderShelf(){
   const all = byNewest();
-  const shown = all.slice(0, 5);          // the dashboard shows one short row
+  /* The shelf shows as many as fit in one row (see .one-row). 16 is more
+     than any screen fits, and stops a big library loading every cover
+     just to hide most of them. */
+  const shown = all.slice(0, 16);
   $('#shelfCount').textContent = all.length + (all.length === 1 ? ' book' : ' books');
   $('#shelf').innerHTML = all.length
     ? shown.map(shelfItem).join('')
