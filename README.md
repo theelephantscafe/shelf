@@ -1,9 +1,41 @@
-# Shelf — reading tracker prototype
+# Shelf — a personal reading tracker
 
-**To use it:** double-click `index.html`. It opens in your browser. That's it — nothing to install.
+**Live site: https://theelephantscafe.github.io/shelf/**
 
-- Your books are saved in that browser, on this computer. Same browser = your books are there.
-- Book search and cover art come from Open Library (openlibrary.org), a free book database. You need internet for searching and for covers to show.
-- Use the **⋮ menu → Back up my books** now and then. It saves a small file you can restore from later.
+Track books, reading dates, formats, ratings and notes. The calendar fills a
+book's cover across every day between its start and end date, so only those
+two dates need logging.
 
-Everything is in the single `index.html` file.
+## Using it
+
+Open the live site in any browser. Add it to your phone's home screen and it
+opens like an app.
+
+Book search and cover art come from [Open Library](https://openlibrary.org),
+a free book database — no account needed.
+
+## Where your books are stored
+
+Your books are saved **in the browser you're using**, not on GitHub and not on
+any server. That means:
+
+- Nobody else can see your books, notes or ratings — they never leave your device.
+- Each browser and device keeps its **own separate library**. Your phone and
+  laptop will not share books.
+- Clearing your browser data erases them.
+
+Use **⋮ → Back up my books** to save a file, and **Restore from backup** to
+load it into another browser.
+
+## Updating the site
+
+The live site is served from `index.html` on the `main` branch. Push a change
+and GitHub Pages republishes it within about a minute.
+
+## Running it locally
+
+```
+node serve.js
+```
+
+Then open http://localhost:4173 — useful for trying changes before pushing.
