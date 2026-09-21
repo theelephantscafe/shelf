@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js"></script>
 <style>
 :root{
   color-scheme: light dark;
@@ -76,6 +77,20 @@ section{margin-top:34px}
   display:inline-flex;gap:5px;align-items:center}
 .pill-accent{background:var(--accent-soft);border-color:transparent;color:var(--accent);font-weight:600}
 
+/* ---------- sign in ---------- */
+#gate{max-width:390px;margin:0 auto;padding:60px 20px 40px;text-align:center}
+#gate .mark{font-family:var(--serif);font-size:34px;letter-spacing:-.02em;margin-bottom:6px}
+#gate .mark span{color:var(--accent)}
+#gate p.lead{color:var(--muted);font-size:14.5px;margin:0 0 26px}
+#gate input{text-align:center;margin-bottom:10px}
+#gate .btn-primary{width:100%;padding:11px}
+#gate .note{font-size:12.5px;color:var(--muted);margin-top:20px;line-height:1.6}
+#gateMsg{font-size:14px;margin-top:16px;line-height:1.55}
+#gateMsg.ok{color:var(--accent)}
+#gateMsg.bad{color:#c0392b}
+.acct{font-size:12px;color:var(--muted);padding:6px 12px 10px;border-bottom:1px solid var(--line);
+  margin-bottom:4px;word-break:break-all}
+
 /* ---------- bookshelf ----------
    Books stand on a wooden plank. The planks are drawn as a repeating
    background stripe, so rows always line up no matter how many books
@@ -142,7 +157,7 @@ section{margin-top:34px}
 .field{margin-bottom:14px}
 .field label{display:block;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;
   color:var(--muted);margin-bottom:6px}
-input[type=date],input[type=text],input[type=search],textarea,select{
+input[type=date],input[type=text],input[type=search],input[type=email],textarea,select{
   font:inherit;font-size:15px;color:var(--ink);background:var(--card);border:1px solid var(--line);
   border-radius:10px;padding:9px 12px;width:100%;outline:none}
 input:focus,textarea:focus,select:focus{border-color:var(--accent)}
@@ -212,6 +227,16 @@ dialog::backdrop{background:rgba(20,15,10,.45);backdrop-filter:blur(2px)}
 </head>
 <body>
 
+<main id="gate" class="hide">
+  <div class="mark">Shelf<span>.</span></div>
+  <p class="lead">Your reading, wherever you are.</p>
+  <input type="email" id="gateEmail" placeholder="you@example.com" autocomplete="email">
+  <button class="btn btn-primary" id="gateSend">Email me a sign-in link</button>
+  <div id="gateMsg"></div>
+  <p class="note">No password. We email you a link that signs you in.</p>
+</main>
+
+<div id="app" class="hide">
 <header class="topbar">
   <div class="wrap">
     <button class="brand" id="brandBtn">Shelf<span>.</span></button>
@@ -219,9 +244,10 @@ dialog::backdrop{background:rgba(20,15,10,.45);backdrop-filter:blur(2px)}
     <button class="btn btn-icon btn-ghost" id="menuBtn" aria-label="More options">&#8942;</button>
   </div>
   <div class="menu hide" id="menu">
+    <div class="acct" id="mAcct"></div>
     <button id="mBackup">Back up my books</button>
     <button id="mRestore">Restore from backup</button>
-    <button id="mSamples">Remove sample books</button>
+    <button id="mSignOut">Sign out</button>
   </div>
 </header>
 
@@ -387,13 +413,14 @@ dialog::backdrop{background:rgba(20,15,10,.45);backdrop-filter:blur(2px)}
 </dialog>
 
 <input type="file" id="restoreFile" accept="application/json" class="hide">
+</div><!-- /#app -->
 
 <script>
 /* ============================================================
    Shelf — a local reading tracker.
-   All data lives in this browser's localStorage. Book search and
-   cover art come from Open Library (openlibrary.org), a free,
-   no-signup book database.
+   Books are stored in Supabase and tied to the signed-in account, so
+   they follow you between devices. Book search and cover art come from
+   Open Library (openlibrary.org), a free, no-signup book database.
    ============================================================ */
 
 const $  = s => document.querySelector(s);
@@ -411,61 +438,69 @@ const pretty = s => s ? new Date(s + 'T00:00:00')
 const prettyShort = s => s ? new Date(s + 'T00:00:00')
   .toLocaleDateString(undefined, {month:'short', day:'numeric'}) : '';
 
-/* ---------- storage ---------- */
-const KEY = 'shelf.books.v1';
-let books = [];
-const uid  = () => Math.random().toString(36).slice(2, 10);
+/* ============================================================
+   SUPABASE  — where the books actually live now.
+   These two values are safe in public code: on their own they grant
+   nothing. The database's Row Level Security rules only ever return
+   rows belonging to the signed-in user.
+   ============================================================ */
+const SUPABASE_URL  = 'https://mhifmirdbkjmsriurlxi.supabase.co';
+const SUPABASE_ANON  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1oaWZtaXJkYmtqbXNyaXVybHhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMTE2MjAsImV4cCI6MjEwNTU4NzYyMH0.hZfEGKISWHxjH7Kcn_sYLc-JWPWhcQ0ERM_3C-uNhI8';
 
-/* Some browsers block storage (private windows, files opened oddly) and some
-   run out of room. Never let that crash the page — just warn once. */
-let storageOK = true;
-function warnStorage(msg){
-  if (!storageOK) return;
-  storageOK = false;
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+let books = [];
+const uid = () => (crypto.randomUUID
+  ? crypto.randomUUID()
+  : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    }));
+
+/* A saving problem must never be silent — the book is on screen but not
+   in the database, and that is exactly when people close the tab. */
+let bannerShown = false;
+function warnSaving(msg){
+  if (bannerShown) return;
+  bannerShown = true;
   const bar = document.createElement('div');
   bar.style.cssText = 'background:#9a3f2c;color:#fff;padding:10px 20px;font-size:13.5px;text-align:center';
   bar.textContent = msg;
   document.body.prepend(bar);
 }
-function save(){
-  try { localStorage.setItem(KEY, JSON.stringify(books)); }
-  catch (e) {
-    warnStorage(e.name === 'QuotaExceededError'
-      ? 'Storage is full — try a smaller cover image. Recent changes were not saved.'
-      : 'This browser is blocking storage, so your changes won\u2019t be remembered after you close the tab.');
-  }
+
+/* database row  <->  the shape the rest of the app already speaks */
+const rowToBook = r => ({
+  id:r.id, title:r.title, author:r.author, cover:r.cover, format:r.format,
+  start:r.started_on, end:r.finished_on, rating:r.rating, notes:r.notes
+});
+const bookToRow = b => ({
+  id:b.id, title:b.title || '', author:b.author || '', cover:b.cover || '',
+  format:b.format || 'physical', started_on:b.start || null, finished_on:b.end || null,
+  rating:b.rating || 0, notes:b.notes || ''
+});
+
+async function loadBooks(){
+  const {data, error} = await db.from('books').select('*');
+  if (error){ warnSaving('Could not load your books: ' + error.message); return; }
+  books = (data || []).map(rowToBook);
 }
-function load(){
-  let raw = null;
-  try { raw = localStorage.getItem(KEY); }
-  catch { warnStorage('This browser is blocking storage, so your changes won\u2019t be remembered after you close the tab.'); }
-  if (raw){ try { books = JSON.parse(raw) || []; } catch { books = []; } }
-  else { books = seed(); save(); }
+
+/* Saves one book. Called after every edit. */
+async function saveBook(b){
+  const {error} = await db.from('books').upsert(bookToRow(b));
+  if (error) warnSaving('A change could not be saved: ' + error.message);
+  return !error;
+}
+
+async function removeBook(id){
+  const {error} = await db.from('books').delete().eq('id', id);
+  if (error){ warnSaving('Could not delete that book: ' + error.message); return false; }
+  return true;
 }
 
 const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 const olCover = (id, size) => `https://covers.openlibrary.org/b/id/${id}-${size}.jpg`;
-
-function seed(){
-  return [
-    { id:uid(), sample:true, title:'The Wager', author:'David Grann',
-      cover:olCover(13245246,'L'), format:'physical',
-      start:daysAgo(6), end:null, rating:0,
-      notes:'' },
-    { id:uid(), sample:true, title:'Circe', author:'Madeline Miller',
-      cover:olCover(8739376,'L'), format:'audio',
-      start:daysAgo(19), end:daysAgo(8), rating:4,
-      notes:'The narrator was wonderful. Loved the slow middle section.' },
-    { id:uid(), sample:true, title:'Tomorrow, and Tomorrow, and Tomorrow', author:'Gabrielle Zevin',
-      cover:olCover(12859975,'L'), format:'ebook',
-      start:daysAgo(34), end:daysAgo(21), rating:5,
-      notes:'Read this in four sittings. The chapter about Sadie’s game broke me.' },
-    { id:uid(), sample:true, title:'Klara and the Sun', author:'Kazuo Ishiguro',
-      cover:olCover(10648686,'L'), format:'physical',
-      start:daysAgo(58), end:daysAgo(41), rating:3,
-      notes:'' }
-  ];
-}
 
 const byId = id => books.find(b => b.id === id);
 const FORMATS = {physical:'\u{1F4D6} Physical', ebook:'\u{1F4F1} Ebook', audio:'\u{1F3A7} Audiobook'};
@@ -683,7 +718,7 @@ $('#libBack').onclick = showHome;
 /* Any edit writes straight to storage. */
 function edit(patch, hint = 'Saved'){
   const b = byId(currentId); if (!b) return;
-  Object.assign(b, patch); save();
+  Object.assign(b, patch); saveBook(b);
   $('#dSaved').textContent = hint;
   clearTimeout(edit._t);
   edit._t = setTimeout(() => $('#dSaved').textContent = '', 1600);
@@ -724,8 +759,10 @@ $('#dAuthor').addEventListener('input', debounce(e => edit({author: e.target.tex
 $('#dDelete').onclick = () => {
   const b = byId(currentId);
   if (!confirm(`Delete "${b.title}"? This can't be undone.`)) return;
-  books = books.filter(x => x.id !== currentId);
-  save(); showHome();
+  const id = currentId;
+  books = books.filter(x => x.id !== id);
+  showHome();
+  removeBook(id);
 };
 
 /* ============================================================
@@ -787,7 +824,7 @@ $('#sResults').addEventListener('click', e => {
 function addBook({title, author, cover, format = 'physical', start = TODAY}){
   const b = {id:uid(), title, author, cover, format, start,
              end:null, rating:0, notes:''};
-  books.push(b); save();
+  books.push(b); saveBook(b);
   $('#searchDlg').close();
   $('#manualDlg').close();
   renderHome();
@@ -923,7 +960,9 @@ $('#cFile').addEventListener('change', e => {
 $('#menuBtn').onclick = e => { e.stopPropagation(); $('#menu').classList.toggle('hide'); refreshMenu(); };
 document.addEventListener('click', () => $('#menu').classList.add('hide'));
 $('#menu').addEventListener('click', e => e.stopPropagation());
-function refreshMenu(){ $('#mSamples').classList.toggle('hide', !books.some(b => b.sample)); }
+function refreshMenu(){
+  $('#mAcct').textContent = currentUser ? 'Signed in as ' + currentUser.email : '';
+}
 
 $('#mBackup').onclick = () => {
   const blob = new Blob([JSON.stringify(books, null, 2)], {type:'application/json'});
@@ -938,23 +977,85 @@ $('#restoreFile').addEventListener('change', e => {
   f.text().then(t => {
     const data = JSON.parse(t);
     if (!Array.isArray(data)) throw new Error('bad file');
-    if (!confirm(`Replace your current ${books.length} book(s) with ${data.length} from this backup?`)) return;
-    books = data; save(); showHome();
+    if (!confirm(`Add ${data.length} book(s) from this backup to your shelf?`)) return;
+    restoreBooks(data);
   }).catch(() => alert("That doesn't look like a Shelf backup file."));
   e.target.value = '';
 });
-$('#mSamples').onclick = () => {
-  books = books.filter(b => !b.sample);
-  save(); showHome();
+/* Restore merges a backup file in, giving each book a fresh id so it
+   can never collide with something already on the shelf. */
+async function restoreBooks(data){
+  const rows = data
+    .filter(b => b && b.title)
+    .map(b => bookToRow({...b, id: uid()}));
+  const {error} = await db.from('books').insert(rows);
+  if (error) return warnSaving('Restore failed: ' + error.message);
+  await loadBooks();
+  showHome();
+}
+
+$('#mSignOut').onclick = async () => {
   $('#menu').classList.add('hide');
+  await db.auth.signOut();
+  books = [];
+  showGate();
 };
 
 /* dialog close buttons */
 $$('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
 
-/* ---------- go ---------- */
-load();
-renderHome();
+/* ============================================================
+   SIGNING IN  (a link by email — no password to remember)
+   ============================================================ */
+let currentUser = null;
+
+function showGate(){
+  currentUser = null;
+  $('#gate').classList.remove('hide');
+  $('#app').classList.add('hide');
+}
+
+async function enterApp(user){
+  currentUser = user;
+  $('#gate').classList.add('hide');
+  $('#app').classList.remove('hide');
+  await loadBooks();
+  showHome();
+}
+
+$('#gateSend').onclick = async () => {
+  const email = $('#gateEmail').value.trim();
+  const msg = $('#gateMsg');
+  if (!email){ msg.className = 'bad'; msg.textContent = 'Please enter your email address.'; return; }
+  $('#gateSend').disabled = true;
+  msg.className = ''; msg.textContent = 'Sending…';
+  const {error} = await db.auth.signInWithOtp({
+    email,
+    options: {emailRedirectTo: location.origin + location.pathname}
+  });
+  $('#gateSend').disabled = false;
+  if (error){ msg.className = 'bad'; msg.textContent = error.message; return; }
+  msg.className = 'ok';
+  msg.textContent = 'Check ' + email + ' for your sign-in link. You can close this tab.';
+};
+
+$('#gateEmail').addEventListener('keydown', e => {
+  if (e.key === 'Enter') $('#gateSend').click();
+});
+
+/* Runs on load, and again when the emailed link brings you back. */
+db.auth.onAuthStateChange((_event, session) => {
+  if (session?.user){
+    if (currentUser?.id !== session.user.id) enterApp(session.user);
+  } else {
+    showGate();
+  }
+});
+
+db.auth.getSession().then(({data}) => {
+  if (data.session?.user) enterApp(data.session.user);
+  else showGate();
+});
 </script>
 </body>
 </html>
