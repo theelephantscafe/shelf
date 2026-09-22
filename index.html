@@ -83,7 +83,9 @@ section{margin-top:34px}
 #gate p.lead{color:var(--muted);font-size:14.5px;margin:0 0 26px}
 #gate input{text-align:center;margin-bottom:10px}
 #gate .btn-primary{width:100%;padding:11px}
-#gate .note{font-size:12.5px;color:var(--muted);margin-top:20px;line-height:1.6}
+#gate .note{font-size:12.5px;color:var(--muted);margin-top:22px;line-height:1.6}
+.linkish{background:none;border:0;padding:0;color:var(--accent);text-decoration:underline;
+  font-size:inherit;cursor:pointer}
 #gateMsg{font-size:14px;margin-top:16px;line-height:1.55}
 #gateMsg.ok{color:var(--accent)}
 #gateMsg.bad{color:#c0392b}
@@ -158,7 +160,7 @@ section{margin-top:34px}
 .field{margin-bottom:14px}
 .field label{display:block;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;
   color:var(--muted);margin-bottom:6px}
-input[type=date],input[type=text],input[type=search],input[type=email],textarea,select{
+input[type=date],input[type=text],input[type=search],input[type=email],input[type=password],textarea,select{
   font:inherit;font-size:15px;color:var(--ink);background:var(--card);border:1px solid var(--line);
   border-radius:10px;padding:9px 12px;width:100%;outline:none}
 input:focus,textarea:focus,select:focus{border-color:var(--accent)}
@@ -244,10 +246,16 @@ dialog::backdrop{background:rgba(20,15,10,.45);backdrop-filter:blur(2px)}
 <main id="gate" class="hide">
   <div class="mark">Paige</div>
   <p class="lead">Your reading, wherever you are.</p>
-  <input type="email" id="gateEmail" placeholder="you@example.com" autocomplete="email">
-  <button class="btn btn-primary" id="gateSend">Email me a sign-in link</button>
+  <!-- a real <form> with these autocomplete hints lets the phone's password
+       manager offer to save the password and fill it in next time -->
+  <form id="gateForm">
+    <input type="email" id="gateEmail" placeholder="Email" autocomplete="username" autocapitalize="off">
+    <input type="password" id="gatePass" placeholder="Password" autocomplete="current-password">
+    <button class="btn btn-primary" type="submit" id="gateSignIn">Sign in</button>
+  </form>
   <div id="gateMsg"></div>
-  <p class="note">No password. We email you a link that signs you in.</p>
+  <p class="note">No password yet, or forgot it?<br>
+    <button class="linkish" id="gateSend" type="button">Email me a sign-in link</button> instead.</p>
 </main>
 
 <div id="app" class="hide">
@@ -261,6 +269,7 @@ dialog::backdrop{background:rgba(20,15,10,.45);backdrop-filter:blur(2px)}
     <div class="acct" id="mAcct"></div>
     <button id="mBackup">Back up my books</button>
     <button id="mRestore">Restore from backup</button>
+    <button id="mPassword">Set password</button>
     <button id="mSignOut">Sign out</button>
   </div>
 </header>
@@ -430,6 +439,24 @@ dialog::backdrop{background:rgba(20,15,10,.45);backdrop-filter:blur(2px)}
     </div>
     <p style="margin-top:12px"><button class="btn" id="cUpload">Upload from this device</button>
       <input type="file" id="cFile" accept="image/*" class="hide"></p>
+  </div>
+</dialog>
+
+<!-- ============ PASSWORD DIALOG ============ -->
+<dialog id="pwDlg">
+  <div class="dlg-head"><h2>Set password</h2>
+    <button class="btn btn-ghost btn-icon" data-close>&#10005;</button></div>
+  <div class="dlg-body">
+    <form id="pwForm">
+      <div class="field"><label>Account</label>
+        <input type="email" id="pwUser" autocomplete="username" readonly></div>
+      <div class="field"><label>New password</label>
+        <input type="password" id="pwNew" autocomplete="new-password" placeholder="At least 8 characters"></div>
+      <div class="field"><label>Type it again</label>
+        <input type="password" id="pwAgain" autocomplete="new-password"></div>
+      <p class="err" id="pwErr"></p>
+      <button class="btn btn-primary" type="submit" id="pwSave">Save password</button>
+    </form>
   </div>
 </dialog>
 
@@ -1240,25 +1267,68 @@ async function enterApp(user){
   showHome();
 }
 
-$('#gateSend').onclick = async () => {
+const gateSay = (kind, text) => { $('#gateMsg').className = kind; $('#gateMsg').textContent = text; };
+
+$('#gateForm').onsubmit = async e => {
+  e.preventDefault();
   const email = $('#gateEmail').value.trim();
-  const msg = $('#gateMsg');
-  if (!email){ msg.className = 'bad'; msg.textContent = 'Please enter your email address.'; return; }
-  $('#gateSend').disabled = true;
-  msg.className = ''; msg.textContent = 'Sending…';
-  const {error} = await db.auth.signInWithOtp({
-    email,
-    options: {emailRedirectTo: location.origin + location.pathname}
-  });
-  $('#gateSend').disabled = false;
-  if (error){ msg.className = 'bad'; msg.textContent = error.message; return; }
-  msg.className = 'ok';
-  msg.textContent = 'Check ' + email + ' for your sign-in link. You can close this tab.';
+  const password = $('#gatePass').value;
+  if (!email) return gateSay('bad', 'Please enter your email address.');
+  if (!password) return gateSay('bad', 'Please enter your password, or use the email link below.');
+  $('#gateSignIn').disabled = true;
+  gateSay('', 'Signing in\u2026');
+  const {error} = await db.auth.signInWithPassword({email, password});
+  $('#gateSignIn').disabled = false;
+  if (error) return gateSay('bad', error.message === 'Invalid login credentials'
+    ? 'That email and password don\u2019t match. If you haven\u2019t set a password yet, use the email link below.'
+    : error.message);
+  $('#gatePass').value = '';
+  gateSay('', '');                  // signing in is picked up by onAuthStateChange
 };
 
-$('#gateEmail').addEventListener('keydown', e => {
-  if (e.key === 'Enter') $('#gateSend').click();
-});
+$('#gateSend').onclick = async () => {
+  const email = $('#gateEmail').value.trim();
+  if (!email) return gateSay('bad', 'Please enter your email address first.');
+  $('#gateSend').disabled = true;
+  gateSay('', 'Sending\u2026');
+  const {error} = await db.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: location.origin + location.pathname,
+      shouldCreateUser: false       // sign in existing accounts only, never create one
+    }
+  });
+  $('#gateSend').disabled = false;
+  if (error) return gateSay('bad', /signups not allowed|not found/i.test(error.message)
+    ? 'There\u2019s no account for that email.' : error.message);
+  gateSay('ok', 'Check ' + email + ' for your sign-in link. It opens in your browser, '
+    + 'so once you\u2019re in, set a password from the \u22EE menu to sign in anywhere.');
+};
+
+/* ---------- set or change the password (while signed in) ---------- */
+$('#mPassword').onclick = () => {
+  $('#menu').classList.add('hide');
+  $('#pwUser').value = currentUser?.email || '';
+  $('#pwNew').value = $('#pwAgain').value = '';
+  $('#pwErr').textContent = ''; $('#pwErr').style.color = '';
+  $('#pwDlg').showModal();
+  setTimeout(() => $('#pwNew').focus(), 50);
+};
+
+$('#pwForm').onsubmit = async e => {
+  e.preventDefault();
+  const pw = $('#pwNew').value, again = $('#pwAgain').value;
+  const say = (t, ok) => { $('#pwErr').textContent = t; $('#pwErr').style.color = ok ? 'var(--accent)' : ''; };
+  if (pw.length < 8) return say('Please use at least 8 characters.');
+  if (pw !== again)  return say('Those two don\u2019t match \u2014 try typing them again.');
+  $('#pwSave').disabled = true; say('Saving\u2026', true);
+  const {error} = await db.auth.updateUser({password: pw});
+  $('#pwSave').disabled = false;
+  if (error) return say(/different from the old/i.test(error.message)
+    ? 'That\u2019s already your password.' : error.message);
+  say('Password saved. Next time, sign in with your email and this password.', true);
+  setTimeout(() => $('#pwDlg').close(), 2200);
+};
 
 /* Runs on load, and again when the emailed link brings you back. */
 db.auth.onAuthStateChange((_event, session) => {
