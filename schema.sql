@@ -16,6 +16,8 @@ create table if not exists public.books (
   rating      numeric(2,1) not null default 0
                 check (rating >= 0 and rating <= 5 and rating * 2 = round(rating * 2)),
   notes       text        not null default '',
+  dnf         boolean     not null default false,
+  breaks      jsonb       not null default '[]'::jsonb,
   created_at  timestamptz not null default now()
 );
 

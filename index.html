@@ -175,6 +175,13 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 .stars-input .full .fill{clip-path:inset(0 0 0 0)}
 .stars-input .half .fill{clip-path:inset(0 50% 0 0)}
 .star-hint{font-size:12px;color:var(--muted);margin:4px 0 0}
+.rating-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px}
+.dnf-btn{font-size:13px;padding:6px 13px}
+.dnf-btn[aria-pressed=true]{background:var(--accent-soft);border-color:transparent;color:var(--accent);font-weight:600}
+.status-btns{display:flex;flex-wrap:wrap;gap:8px;margin:-6px 0 14px}
+.break-dates{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted)}
+.break-dates input[type=date]{flex:1 1 0;min-width:0;max-width:200px}
+#dBreaks:empty{display:none}
 .stars-input button:hover{transform:scale(1.12)}
 .stars-input .btn{color:var(--muted);text-decoration:underline}
 .stars-input .btn:hover{transform:none;color:var(--accent)}
@@ -281,7 +288,7 @@ dialog::backdrop{background:rgba(20,15,10,.45);backdrop-filter:blur(2px)}
     </div>
     <div class="cal-dow"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div>
     <div class="cal-grid" id="calGrid"></div>
-    <p class="cal-legend">Covers fill every day between a book&rsquo;s start and end date &mdash; no daily logging needed. Tap a day to open the book.</p>
+    <p class="cal-legend">Covers fill every day between a book&rsquo;s start and end date, skipping any breaks &mdash; no daily logging needed. Tap a day to open the book.</p>
   </section>
 
 </main>
@@ -332,14 +339,21 @@ dialog::backdrop{background:rgba(20,15,10,.45);backdrop-filter:blur(2px)}
 
       <div class="row2">
         <div class="field"><label>Started</label><input type="date" id="dStart"></div>
-        <div class="field"><label>Finished</label><input type="date" id="dEnd"></div>
+        <div class="field"><label id="dEndLabel">Finished</label><input type="date" id="dEnd"></div>
       </div>
-      <p style="margin:-6px 0 14px"><button class="btn" id="dFinishToday">Finished today</button>
+      <p class="status-btns">
+        <button class="btn" id="dFinishToday">Finished today</button>
+        <button class="btn" id="dPause">On a break</button>
+        <button class="btn hide" id="dResume">Resume reading</button>
         <button class="btn hide" id="dStillReading">Still reading</button></p>
+      <div id="dBreaks"></div>
 
       <div class="field">
         <label>Rating</label>
-        <div class="stars-input" id="dStars"></div>
+        <div class="rating-row">
+          <div class="stars-input" id="dStars"></div>
+          <button class="btn dnf-btn" id="dDNF" aria-pressed="false">Did not finish</button>
+        </div>
         <p class="star-hint">Double-tap a star for a half star</p>
       </div>
     </div>
@@ -451,6 +465,51 @@ const pretty = s => s ? new Date(s + 'T00:00:00')
 const prettyShort = s => s ? new Date(s + 'T00:00:00')
   .toLocaleDateString(undefined, {month:'short', day:'numeric'}) : '';
 
+/* ---------- reading days ----------
+   A book is being read from its start date to its finish date (or today if
+   still going), minus any breaks. The calendar, the year filter and the
+   day counter all ask readingSegments, so they can never disagree. */
+const shiftDay = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return iso(d); };
+
+function readingSegments(b){
+  if (!b.start) return [];
+  const last = b.end || TODAY;
+  if (last < b.start) return [];
+  let segs = [[b.start, last]];
+  for (const br of b.breaks || []){
+    const from = br.from, to = br.to || last;      // an ongoing break runs until now
+    if (!from || to < from) continue;
+    segs = segs.flatMap(([a, z]) => {
+      if (to < a || from > z) return [[a, z]];
+      const keep = [];
+      if (from > a) keep.push([a, shiftDay(from, -1)]);
+      if (to < z)   keep.push([shiftDay(to, 1), z]);
+      return keep;
+    });
+  }
+  return segs;
+}
+
+const readOn   = (b, day) => readingSegments(b).some(([a, z]) => a <= day && day <= z);
+const daysRead = b => readingSegments(b).reduce((n, [a, z]) =>
+  n + Math.round((new Date(z + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000) + 1, 0);
+const openBreak = b => (b.breaks || []).find(br => !br.to);
+
+/* Keeps breaks sorted, merges ones that touch or overlap, drops empty ones
+   (like pausing and resuming on the same day), and allows one ongoing break. */
+function tidyBreaks(list){
+  const closed = list.filter(br => br.from && br.to && br.to >= br.from)
+                     .sort((a, b) => a.from.localeCompare(b.from));
+  const merged = [];
+  for (const br of closed){
+    const prev = merged[merged.length - 1];
+    if (prev && br.from <= shiftDay(prev.to, 1)){ if (br.to > prev.to) prev.to = br.to; }
+    else merged.push({from: br.from, to: br.to});
+  }
+  const open = list.find(br => br.from && !br.to);
+  return open ? merged.concat({from: open.from, to: null}) : merged;
+}
+
 /* ============================================================
    SUPABASE  — where the books actually live now.
    These two values are safe in public code: on their own they grant
@@ -485,12 +544,14 @@ function warnSaving(msg){
 /* database row  <->  the shape the rest of the app already speaks */
 const rowToBook = r => ({
   id:r.id, title:r.title, author:r.author, cover:r.cover, format:r.format,
-  start:r.started_on, end:r.finished_on, rating:Number(r.rating) || 0, notes:r.notes
+  start:r.started_on, end:r.finished_on, rating:Number(r.rating) || 0, notes:r.notes,
+  dnf:!!r.dnf, breaks:Array.isArray(r.breaks) ? r.breaks : []
 });
 const bookToRow = b => ({
   id:b.id, title:b.title || '', author:b.author || '', cover:b.cover || '',
   format:b.format || 'physical', started_on:b.start || null, finished_on:b.end || null,
-  rating:b.rating || 0, notes:b.notes || ''
+  rating:b.rating || 0, notes:b.notes || '',
+  dnf:!!b.dnf, breaks:b.breaks || []
 });
 
 async function loadBooks(){
@@ -537,7 +598,8 @@ function coverFail(img){
 function renderHome(){ renderNow(); renderShelf(); renderCalendar(); refreshMenu(); }
 
 function renderNow(){
-  const reading = books.filter(b => b.start && !b.end).sort((a,b) => b.start.localeCompare(a.start));
+  const reading = books.filter(b => b.start && !b.end)
+    .sort((a, b) => (!!openBreak(a) - !!openBreak(b)) || b.start.localeCompare(a.start));
   const g = $('#nowGrid');
   if (!reading.length){
     g.innerHTML = `<div class="empty"><p>Nothing in progress right now.</p>
@@ -545,14 +607,14 @@ function renderNow(){
     return;
   }
   g.innerHTML = reading.map(b => {
-    const days = Math.round((new Date(TODAY) - new Date(b.start)) / 86400000) + 1;
     return `<button class="now-card" onclick="openBook('${b.id}')">
       ${coverHTML(b)}
       <div class="now-body">
         <h3>${esc(b.title)}</h3>
         <div class="now-author">${esc(b.author)}</div>
         <div class="now-meta">
-          <span class="pill pill-accent">Day ${days}</span>
+          ${openBreak(b) ? `<span class="pill">On a break</span>`
+                         : `<span class="pill pill-accent">Day ${daysRead(b)}</span>`}
           <span class="pill">${FORMATS[b.format] || FORMATS.physical}</span>
           <span>Started ${pretty(b.start)}</span>
         </div>
@@ -615,14 +677,14 @@ function sortBooks(mode){
 let yearFilter = 'all';
 
 /* Every year a book was being read in, from its start to its finish —
-   or to today if still reading. The same rule the calendar uses, so a
-   book that runs from December into January shows in both years. */
+   or to today if still reading, skipping breaks. The same rule the calendar
+   uses, so a book read from December into January shows in both years, and
+   a year spent entirely on a break doesn't count. */
 function readingYears(b){
-  if (!b.start) return [];
-  const a = +b.start.slice(0, 4), z = +(b.end || TODAY).slice(0, 4);
-  const years = [];
-  for (let y = Math.min(a, z); y <= Math.max(a, z); y++) years.push(y);
-  return years;
+  const years = new Set();
+  for (const [a, z] of readingSegments(b))
+    for (let y = +a.slice(0, 4); y <= +z.slice(0, 4); y++) years.add(y);
+  return [...years];
 }
 
 /* Only years that actually have books are offered. */
@@ -659,7 +721,7 @@ let calY, calM;
 (() => { const n = new Date(); calY = n.getFullYear(); calM = n.getMonth(); })();
 
 /* Every day from start through end (or through today if still reading). */
-const booksOnDay = day => books.filter(b => b.start && b.start <= day && day <= (b.end || TODAY));
+const booksOnDay = day => books.filter(b => readOn(b, day));
 
 function calImgFail(img){
   const d = document.createElement('div');
@@ -737,8 +799,7 @@ function openBook(id){
   $('#dEnd').value   = b.end   || '';
   $('#dNotes').value = b.notes || '';
   $$('#dFormat button').forEach(x => x.setAttribute('aria-pressed', x.dataset.f === (b.format || 'physical')));
-  $('#dFinishToday').classList.toggle('hide', !!b.end);
-  $('#dStillReading').classList.toggle('hide', !b.end);
+  renderStatus(b);
   $('#dSaved').textContent = '';
   renderStars(b.rating || 0);
 }
@@ -812,11 +873,98 @@ $('#dFormat').addEventListener('click', e => {
 });
 
 $('#dStart').onchange = e => edit({start: e.target.value || null});
+/* ---------- reading status: finished, on a break, did not finish ----------
+   Which buttons show depends on the book's state:
+     reading          -> Finished today, On a break
+     on a break       -> Resume reading
+     finished         -> Still reading
+     did not finish   -> Resume reading (the gap since stopping becomes a break) */
+function renderStatus(b){
+  const paused = !b.end && !!openBreak(b);
+  const done = !!b.end;
+  $('#dEnd').value = b.end || '';
+  $('#dFinishToday').classList.toggle('hide', done || paused);
+  $('#dPause').classList.toggle('hide', done || paused);
+  $('#dResume').classList.toggle('hide', !(paused || (done && b.dnf)));
+  $('#dStillReading').classList.toggle('hide', !done || !!b.dnf);
+  $('#dEndLabel').textContent = b.dnf ? 'Stopped' : 'Finished';
+  $('#dDNF').setAttribute('aria-pressed', !!b.dnf);
+  $('#dDNF').textContent = b.dnf ? '\u2713 Did not finish' : 'Did not finish';
+  renderBreaks(b);
+}
+
+function renderBreaks(b){
+  $('#dBreaks').innerHTML = (b.breaks || []).map((br, i) => br.to
+    ? `<div class="field break-row" data-i="${i}"><label>Break</label>
+         <div class="break-dates">
+           <input type="date" data-k="from" value="${br.from}" aria-label="Break started">to
+           <input type="date" data-k="to" value="${br.to}" aria-label="Break ended">
+           <button class="btn btn-ghost btn-icon" data-remove aria-label="Remove this break">&#10005;</button>
+         </div></div>`
+    : `<div class="field break-row" data-i="${i}"><label>On a break since</label>
+         <div class="break-dates">
+           <input type="date" data-k="from" value="${br.from}" aria-label="Break started">
+         </div></div>`).join('');
+}
+
+/* Typing a finish date while on a break: the break lasted until then. */
+const closeOpenBreakAt = (breaks, day) =>
+  tidyBreaks((breaks || []).map(br => br.to ? br : {...br, to: day}));
+
 $('#dEnd').onchange = e => {
-  edit({end: e.target.value || null});
-  $('#dFinishToday').classList.toggle('hide', !!e.target.value);
-  $('#dStillReading').classList.toggle('hide', !e.target.value);
+  const b = byId(currentId); if (!b) return;
+  const end = e.target.value || null;
+  const patch = {end};
+  if (end) patch.breaks = closeOpenBreakAt(b.breaks, end);
+  else patch.dnf = false;                  // no finish date means still reading
+  edit(patch); renderStatus(b);
 };
+
+$('#dPause').onclick = () => {
+  const b = byId(currentId); if (!b) return;
+  edit({breaks: tidyBreaks([...(b.breaks || []), {from: TODAY, to: null}])});
+  renderStatus(b);
+};
+
+$('#dResume').onclick = () => {
+  const b = byId(currentId); if (!b) return;
+  const yesterday = shiftDay(TODAY, -1);    // reading again as of today
+  if (!b.end){
+    edit({breaks: closeOpenBreakAt(b.breaks, yesterday)});
+  } else if (b.dnf){
+    /* Picking an unfinished book back up: the days since stopping become a
+       break, so the calendar stays empty for them. The start date stays. */
+    edit({end: null, dnf: false,
+          breaks: tidyBreaks([...(b.breaks || []), {from: shiftDay(b.end, 1), to: yesterday}])});
+  }
+  renderStatus(b);
+};
+
+$('#dDNF').onclick = () => {
+  const b = byId(currentId); if (!b) return;
+  if (b.dnf){ edit({dnf: false}); return renderStatus(b); }
+  const end = b.end || TODAY;              // the finished date becomes "stopped"
+  edit({dnf: true, end, breaks: closeOpenBreakAt(b.breaks, end)});
+  renderStatus(b);
+};
+
+/* Editing or removing a break from the list. */
+$('#dBreaks').addEventListener('change', e => {
+  const b = byId(currentId); const row = e.target.closest('.break-row');
+  if (!b || !row || !e.target.dataset.k) return;
+  if (!e.target.value) return renderBreaks(b);          // ignore a cleared date
+  const list = (b.breaks || []).map(br => ({...br}));
+  const br = list[+row.dataset.i];
+  br[e.target.dataset.k] = e.target.value;
+  if (br.to && br.to < br.from) [br.from, br.to] = [br.to, br.from];
+  edit({breaks: tidyBreaks(list)}); renderStatus(b);
+});
+$('#dBreaks').addEventListener('click', e => {
+  if (!e.target.closest('[data-remove]')) return;
+  const b = byId(currentId); const row = e.target.closest('.break-row');
+  edit({breaks: (b.breaks || []).filter((_, i) => i !== +row.dataset.i)});
+  renderStatus(b);
+});
 $('#dFinishToday').onclick = () => { $('#dEnd').value = TODAY; $('#dEnd').onchange({target: $('#dEnd')}); };
 $('#dStillReading').onclick = () => { $('#dEnd').value = '';   $('#dEnd').onchange({target: $('#dEnd')}); };
 
@@ -892,7 +1040,7 @@ $('#sResults').addEventListener('click', e => {
 /* Books added from search start today and open straight to their page. */
 function addBook({title, author, cover, format = 'physical', start = TODAY}){
   const b = {id:uid(), title, author, cover, format, start,
-             end:null, rating:0, notes:''};
+             end:null, rating:0, notes:'', dnf:false, breaks:[]};
   books.push(b); saveBook(b);
   $('#searchDlg').close();
   $('#manualDlg').close();
